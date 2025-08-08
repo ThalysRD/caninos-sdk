@@ -34,29 +34,40 @@ gpio_mappings["64"] = {
     5: "E2",
 }
 gpio_mappings["32"] = {
-    36: "A28",
-    33: "B0",
-    35: "B1",
-    37: "B2",
-    12: "B8",
-    31: "B10",
-    32: "B13",
-    28: "B14",
-    29: "B15",
-    27: "B16",
-    7: "B18",
-    26: "B19",
-    11: "C0",
-    13: "C1",
-    15: "C4",
-    19: "C25",
-    22: "C5",
-    18: "C6",
-    24: "C23",
-    21: "C24",
-    16: "D30",
-    3: "E3",
-    5: "E2",
+    # Mapeamento baseado na tabela oficial da wiki para placas 32-bit Cortex-A9R4
+    # Formato: pino_fisico: "ChipLinha" onde Chip: A=0, B=1, C=2, D=3, E=4
+    # Da tabela oficial: HEADER PIN → GPIO → Conversão para chardev
+    
+    # Pinos de alimentação e terra não são mapeados (1, 2, 4, 6, 9, 14, 17, 20, 25, 30, 34, 39)
+    
+    3: "E2",    # HEADER 3 → GPIOE2/I2C0_SDA → GPIO 130
+    5: "E3",    # HEADER 5 → GPIOE3/I2C0_SCL → GPIO 131
+    7: "B18",   # HEADER 7 → GPIOB18/PCM_SYNC → GPIO 50
+    8: "E10",   # HEADER 8 → GPIOE10/UART0_TX → GPIO 138
+    10: "E9",   # HEADER 10 → GPIOE9/UART0_RX → GPIO 137
+    11: "C0",   # HEADER 11 → GPIOC0/PCM_CLK → GPIO 64
+    12: "B8",   # HEADER 12 → GPIOB8/I2S_BCLK → GPIO 40
+    13: "C1",   # HEADER 13 → GPIOC1/PCM_DIN → GPIO 65
+    15: "C4",   # HEADER 15 → GPIOC4/DSI_CP/SD1_D1/LCDD_D1 → GPIO 68
+    16: "C7",   # HEADER 16 → GPIOC7/DSI_DP/SD1_CLK/LCDD_D4 → GPIO 71
+    18: "C6",   # HEADER 18 → GPIOC6/DSI_DN/SD1_D3/LCDD_D3 → GPIO 70
+    19: "C25",  # HEADER 19 → GPIOC25/SPI2_MOSI → GPIO 89
+    21: "C24",  # HEADER 21 → GPIOC24/SPI2_MISO → GPIO 88
+    22: "C5",   # HEADER 22 → GPIOC5/DSI_CN/SD1_D2/LCDD_D2 → GPIO 69
+    23: "C26",  # HEADER 23 → GPIOC26/SPI2_SCLK → GPIO 90
+    24: "C23",  # HEADER 24 → GPIOC23/SPI2_SS → GPIO 87
+    26: "B19",  # HEADER 26 → GPIOB19/PCM_DOUT → GPIO 51
+    27: "B16",  # HEADER 27 → GPIOB16/I2C1_SDA → GPIO 48
+    28: "B14",  # HEADER 28 → GPIOB14/I2C1_SCL → GPIO 46
+    29: "B15",  # HEADER 29 → GPIOB15/I2C2_SDA → GPIO 47
+    31: "B10",  # HEADER 31 → GPIOB10/I2C2_SCL → GPIO 42
+    32: "B13",  # HEADER 32 → GPIOB13/PWM1 → GPIO 45
+    33: "B0",   # HEADER 33 → GPIOB0/PWM0 → GPIO 32
+    35: "B1",   # HEADER 35 → GPIOB1/PWM2 → GPIO 33
+    36: "A28",  # HEADER 36 → GPIOA28/PWM3 → GPIO 28
+    37: "B2",   # HEADER 37 → GPIOB2/PWM4 → GPIO 34
+    38: "B7",   # HEADER 38 → GPIOB7/I2S_DOUT → GPIO 39
+    40: "B4",   # HEADER 40 → GPIOB4/I2S_DIN → GPIO 36
 }
 
 # FIXME: implement this
@@ -194,15 +205,20 @@ class Pin:
             tuple: (chip_id, line_id) ou (None, None) se inválido
         """
         if board_bits not in gpio_mappings:
-            logging.error(f"Unsupported board version: {board_bits}")
+            logging.error(f"Unsupported board version: {board_bits}-bit")
             return None, None
             
-        group = gpio_mappings[board_bits].get(pin)
-        if not group:
-            logging.error(f"Invalid pin {pin} for board version {board_bits}")
+        if pin not in gpio_mappings[board_bits]:
+            logging.error(f"Pin {pin} not available for {board_bits}-bit board (power/ground/not connected)")
+            return None, None
+            
+        group = gpio_mappings[board_bits][pin]
+        
+        if group is None:
+            logging.error(f"Pin {pin} is not connected (N/C) on {board_bits}-bit board")
             return None, None
         
-        logging.debug(f"Pin {pin} maps to group {group} for board {board_bits}")
+        logging.debug(f"Pin {pin} maps to group {group} for {board_bits}-bit board")
         
         # Ambas as versões (32-bit Cortex-A9R4 e 64-bit) usam o mesmo formato
         # Exemplo: "C4" -> chip_id=2 (C=2), line_id=4
@@ -210,7 +226,7 @@ class Pin:
             chip_id = ord(group[0]) - ord("A")
             line_id = int(group[1:])
             result = (chip_id, line_id)
-            logging.debug(f"Pin {pin}: chip_id={chip_id}, line_id={line_id} (board: {board_bits}-bit)")
+            logging.debug(f"Pin {pin}: chip_id={chip_id}, line_id={line_id} ({board_bits}-bit board)")
             return result
         except (ValueError, IndexError) as e:
             logging.error(f"Error parsing group '{group}' for pin {pin}: {e}")
