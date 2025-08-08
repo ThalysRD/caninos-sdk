@@ -107,29 +107,41 @@ class Pin:
         logging.info(f"PWM enabled")
 
     def gpiod_enable_gpio(self, direction):
+        """
+        Habilita o GPIO usando libgpiod.
+        Suporte para arquiteturas ARM Cortex-A9R4 (32-bit) e ARM64.
+        """
         if self.board.cpu_architecture == "x86_64":
-            logging.debug(f"Skipping pin{self.pin} enable in PC.")
+            logging.debug(f"Skipping pin{self.pin} enable in PC (development mode).")
             return
+            
+        logging.debug(f"Enabling GPIO pin {self.pin} on {self.board.cpu_architecture} ({self.board.board_version}-bit)")
+        
         try:
             chip_device = gpiod.chip(f"/dev/gpiochip{self.chip_id}")
             self.gpiod_pin = chip_device.get_lines([self.line_id])
         except FileNotFoundError:
             logging.error(f"GPIO chip /dev/gpiochip{self.chip_id} not found. Pin {self.pin} maps to chip {self.chip_id}, line {self.line_id}")
+            logging.error(f"Make sure GPIO permissions are set up correctly. Run: sudo ./setup-permissions.sh")
             raise
         except Exception as e:
             logging.error(f"Error accessing GPIO chip {self.chip_id}, line {self.line_id} for pin {self.pin}: {e}")
             raise
+            
         config = gpiod.line_request()
-        config.consumer = f"pin {self.pin}"
+        config.consumer = f"caninos-sdk-pin{self.pin}"
+        
         if direction == Pin.Direction.INPUT:
             config.request_type = gpiod.line_request.EVENT_RISING_EDGE
         elif direction == Pin.Direction.OUTPUT:
             config.request_type = gpiod.line_request.DIRECTION_OUTPUT
+            
         try:
             self.gpiod_pin.request(config)
-            logging.info(f"Pin {self.pin} enabled (chip {self.chip_id}, line {self.line_id})")
+            logging.info(f"Pin {self.pin} enabled (chip {self.chip_id}, line {self.line_id}) on {self.board.cpu_architecture}")
         except Exception as e:
             logging.error(f"Error configuring pin {self.pin} (chip {self.chip_id}, line {self.line_id}): {e}")
+            logging.error(f"This may be a permissions issue. Ensure GPIO permissions are configured.")
             raise
 
     def read(self):
@@ -169,25 +181,37 @@ class Pin:
     #     assert group_ascii in range(ord("A"), ord("E") + 1)
     #     return 32 * (group_ascii - ord("A"))
 
+    @staticmethod
     def get_num(pin, board_bits):
-        group = dict.get(gpio_mappings[board_bits], pin)
+        """
+        Mapeia um número de pino físico para (chip_id, line_id) do GPIO.
+        
+        Args:
+            pin (int): Número do pino físico na placa
+            board_bits (str): Versão da placa ("32" para Cortex-A9R4, "64" para versões 64-bit)
+            
+        Returns:
+            tuple: (chip_id, line_id) ou (None, None) se inválido
+        """
+        if board_bits not in gpio_mappings:
+            logging.error(f"Unsupported board version: {board_bits}")
+            return None, None
+            
+        group = gpio_mappings[board_bits].get(pin)
         if not group:
             logging.error(f"Invalid pin {pin} for board version {board_bits}")
             return None, None
         
         logging.debug(f"Pin {pin} maps to group {group} for board {board_bits}")
         
-        if board_bits == "32":
-            # Para placas de 32 bits, usar o mesmo mapeamento que 64 bits
-            # baseado no exemplo funcional: pino 15 ("C4") -> chip2 linha 4
+        # Ambas as versões (32-bit Cortex-A9R4 e 64-bit) usam o mesmo formato
+        # Exemplo: "C4" -> chip_id=2 (C=2), line_id=4
+        try:
             chip_id = ord(group[0]) - ord("A")
             line_id = int(group[1:])
             result = (chip_id, line_id)
-            logging.debug(f"Pin {pin}: chip_id={chip_id}, line_id={line_id}")
+            logging.debug(f"Pin {pin}: chip_id={chip_id}, line_id={line_id} (board: {board_bits}-bit)")
             return result
-        elif board_bits == "64":
-            chip_id = ord(group[0]) - ord("A")
-            line_id = int(group[1:])
-            result = (chip_id, line_id)
-            logging.debug(f"Pin {pin}: chip_id={chip_id}, line_id={line_id}")
-            return result
+        except (ValueError, IndexError) as e:
+            logging.error(f"Error parsing group '{group}' for pin {pin}: {e}")
+            return None, None
