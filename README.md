@@ -21,7 +21,7 @@ sudo apt update
 Instale as bibliotecas e ferramentas de desenvolvimento essenciais para o Python, que são pré-requisitos para o SDK.
 
 ```bash
-sudo apt install python3-dev python3-pip python3-setuptools libffi-dev libssl-dev curl
+sudo apt install python3-dev python3-pip python3-setuptools python3-venv libffi-dev libssl-dev curl
 ```
 
 ### Passo 3 – Criar Ambiente Virtual
